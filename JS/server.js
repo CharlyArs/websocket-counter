@@ -1,21 +1,25 @@
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-// Подключаем Socket.io для работы в реальном времени
 const io = require('socket.io')(http);
 
-// Общее число, единое для ВСЕХ пользователей
-let globalCount = 100; 
+// === ВОТ ЭТОТ БЛОК МЫ ДОБАВИЛИ ===
+// Говорим серверу отдавать index.html при заходе на главную страницу
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+// ================================
+
+let globalCount = 100; // Стартовое число для всех
 
 io.on('connection', (socket) => {
-    // Как только пользователь зашел, отправляем ему текущее число
+    // Отправляем текущее число новому пользователю
     socket.emit('update_count', globalCount);
 
-    // Слушаем, если кто-то нажал кнопку "Убавить"
+    // Слушаем кнопку "Убавить"
     socket.on('decrease', () => {
         if (globalCount > 0) {
             globalCount--;
-            // Мгновенно рассылаем новое число ВСЕМ подключенным браузерам
             io.emit('update_count', globalCount);
         } else {
             socket.emit('error_msg', 'Ниже нуля не может быть!');
@@ -29,8 +33,8 @@ io.on('connection', (socket) => {
     });
 });
 
+// Настройка порта для Render
 const PORT = process.env.PORT || 3000;
-
 http.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
