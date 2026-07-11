@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Простой счетчик</title>
+    <title>Счетчик с авторизацией</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
@@ -21,80 +20,130 @@
             padding: 30px;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 320px;
         }
-        #number {
-            font-size: 48px;
-            margin: 20px 0;
-            font-weight: bold;
-            color: #333;
-        }
-        button {
-            font-size: 16px;
-            padding: 10px 20px;
-            margin: 5px;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            transition: 0.2s;
-        }
-        #decrease-btn {
-            background-color: #ff4d4d;
-            color: white;
-        }
-        #decrease-btn:hover {
-            background-color: #e60000;
-        }
-        #reset-btn {
-            background-color: #cccccc;
-            color: #333;
-        }
-        #reset-btn:hover {
-            background-color: #b3b3b3;
-        }
-        #message {
-            color: #d9534f;
-            font-weight: bold;
-            height: 20px;
-            margin-top: 15px;
-        }
+        #number { font-size: 48px; margin: 20px 0; font-weight: bold; color: #333; }
+        button { font-size: 16px; padding: 10px 20px; margin: 5px; cursor: pointer; border: none; border-radius: 5px; }
+        input { width: 90%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
+        .btn-primary { background-color: #007bff; color: white; width: 97%; }
+        #decrease-btn { background-color: #ff4d4d; color: white; }
+        #reset-btn { background-color: #cccccc; color: #333; }
+        .error-msg { color: #d9534f; font-weight: bold; margin-top: 10px; font-size: 14px; }
+        .toggle-link { color: #007bff; cursor: pointer; text-decoration: underline; font-size: 13px; margin-top: 10px; display: inline-block; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div id="number">10</div>
+<!-- БЛОК 1: ОКНО ВХОДА И РЕГИСТРАЦИИ -->
+<div class="container" id="auth-box">
+    <h2 id="auth-title">Войти в систему</h2>
+    
+    <input type="text" id="auth-phone" placeholder="Номер телефона">
+    <input type="text" id="auth-nickname" placeholder="Nickname (только для регистрации)" style="display: none;">
+    <input type="password" id="auth-password" placeholder="Пароль">
+    
+    <button class="btn-primary" id="auth-submit-btn">Войти</button>
+    <div class="error-msg" id="auth-error"></div>
+    <span class="toggle-link" id="auth-toggle">Нет аккаунта? Зарегистрироваться</span>
+</div>
 
+<!-- БЛОК 2: ОКНО СЧЕТЧИКА (СКРЫТО ПО УМОЛЧАНИЮ) -->
+<div class="container" id="counter-box" style="display: none;">
+    <h2>Привет, <span id="user-greeting"></span>!</h2>
+    <div id="number">...</div>
     <button id="decrease-btn">Убавить</button>
     <button id="reset-btn">Сброс</button>
-
-    <div id="message"></div>
+    <div class="error-msg" id="counter-error"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-    const socket = io(); // Подключаемся к нашему серверу
+    let isLoginMode = true; // Режим: либо вход (true), либо регистрация (false)
 
-    const numberDisplay = document.getElementById('number');
-    const messageDisplay = document.getElementById('message');
+    const authBox = document.getElementById('auth-box');
+    const counterBox = document.getElementById('counter-box');
+    const toggleLink = document.getElementById('auth-toggle');
+    const nicknameInput = document.getElementById('auth-nickname');
+    const authTitle = document.getElementById('auth-title');
+    const submitBtn = document.getElementById('auth-submit-btn');
+    const authError = document.getElementById('auth-error');
 
-    // Нажатие кнопки теперь отправляет сигнал на сервер
-    document.getElementById('decrease-btn').addEventListener('click', () => {
-        socket.emit('decrease'); 
+    // Переключение между Входом и Регистрацией по клику на ссылку
+    toggleLink.addEventListener('click', () => {
+        isLoginMode = !isLoginMode;
+        authError.textContent = "";
+        if (isLoginMode) {
+            authTitle.textContent = "Войти в систему";
+            nicknameInput.style.display = "none";
+            submitBtn.textContent = "Войти";
+            toggleLink.textContent = "Нет аккаунта? Зарегистрироваться";
+        } else {
+            authTitle.textContent = "Регистрация";
+            nicknameInput.style.display = "block";
+            submitBtn.textContent = "Создать аккаунт";
+            toggleLink.textContent = "Уже есть аккаунт? Войти";
+        }
     });
 
-    document.getElementById('reset-btn').addEventListener('click', () => {
-        socket.emit('reset');
+    // Отправка данных формы на бэкенд
+    submitBtn.addEventListener('click', async () => {
+        const phone = document.getElementById('auth-phone').value;
+        const nickname = nicknameInput.value;
+        const password = document.getElementById('auth-password').value;
+        authError.textContent = "";
+
+        const url = isLoginMode ? '/api/login' : '/api/register';
+        const bodyData = isLoginMode ? { phone, password } : { phone, nickname, password };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyData)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                // Выводим ошибку от сервера ("Такой пользователь уже существует" и т.д.)
+                authError.textContent = result.error;
+            } else {
+                // Если всё ок, пускаем в счетчик
+                startCounterApp(result.nickname);
+            }
+        } catch (err) {
+            authError.textContent = "Не удалось связаться с сервером";
+        }
     });
 
-    // Слушаем ответы от сервера. Когда сервер говорит "число изменилось", меняем экран
-    socket.on('update_count', (newCount) => {
-        numberDisplay.textContent = newCount;
-        messageDisplay.textContent = ""; // сбрасываем ошибку
-    });
+    // Функция запуска счетчика после успешного входа/регистрации
+    function startCounterApp(nickname) {
+        authBox.style.display = "none";
+        counterBox.style.display = "block";
+        document.getElementById('user-greeting').textContent = nickname;
 
-    socket.on('error_msg', (msg) => {
-        messageDisplay.textContent = msg;
-    });
+        // ТОЛЬКО СЕЙЧАС подключаем живые сокеты
+        const socket = io(); 
+        const numberDisplay = document.getElementById('number');
+        const counterError = document.getElementById('counter-error');
+
+        document.getElementById('decrease-btn').addEventListener('click', () => {
+            socket.emit('decrease'); 
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            socket.emit('reset');
+        });
+
+        socket.on('update_count', (newCount) => {
+            numberDisplay.textContent = newCount;
+            counterError.textContent = ""; 
+        });
+
+        socket.on('error_msg', (msg) => {
+            counterError.textContent = msg;
+        });
+    }
 </script>
 
 </body>
